@@ -1,9 +1,9 @@
 fn main() {
-    excs_example::main();
+    excs_example::main("<mongo_conn_string>");
 }
 
 pub mod excs_example {
-    use std::{collections::HashSet, env};
+    use std::collections::HashSet;
 
     use bson::doc;
     use bson::serde_helpers::serialize_hex_string_as_object_id;
@@ -20,24 +20,22 @@ pub mod excs_example {
     use serde::{Deserialize, Serialize};
     use serde_json::{json, Value};
 
-    pub fn main() {
+    pub fn main(mongo_url: &str) {
         env_logger::init();
 
         let async_worker = Workers::new(1);
+        let mongo_url_clj = mongo_url.to_string();
         let mongo_client = async_worker
             .queue_with_result(async {
-                let uri = env::var("MONGO_URI").unwrap();
-                Client::with_uri_str(uri).await.unwrap()
+                Client::with_uri_str(mongo_url_clj).await.unwrap()
             })
             .unwrap()
             .get();
 
-        //async fn mongo(_: AsyncRequest) -> Result<Response, String> {}
-
         let handlers = HashSet::from([
             AsyncHandler::new("GET", "/status", status),
             AsyncHandler::new("GET", "/excs/:id", get_excs),
-            AsyncHandler::new("GET", "/excs/:id", post_excs),
+            AsyncHandler::new("POST", "/excs", post_excs),
         ]);
 
         AsyncHttpServer::builder()
@@ -95,5 +93,48 @@ pub mod excs_example {
 
         excs_coll.insert_one(&excs, None).await.unwrap();
         Ok(Response::create(200, json!({"name": buf}).to_string()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{thread, time::Duration};
+
+    use testcontainers::{core::{ContainerPort, WaitFor}, runners::SyncRunner, GenericImage, ImageExt};
+
+    use crate::excs_example;
+
+
+    #[test]
+    fn zz() {
+        let mongo_container = GenericImage::new("mongo", "6.0.7")
+            .with_wait_for(WaitFor::message_on_stdout("server is ready"))
+            .with_exposed_port(ContainerPort::Tcp(27017))
+            .with_env_var("MONGO_INITDB_DATABASE", "gym-log")
+            .with_env_var("MONGO_INITDB_ROOT_USERNAME", "root")
+            .with_env_var("MONGO_INITDB_ROOT_PASSWORD", "root")
+            .start()
+            .unwrap();
+        let mongo_port = mongo_container.get_host_port_ipv4(ContainerPort::Tcp(27017)).unwrap();
+        let mongo_uri = format!("mongodb://root:root@localhost:{port}", port = mongo_port);
+
+        let _server_thread = thread::spawn(move || excs_example::main(&mongo_uri));
+
+        wait_for_server_to_start(&"8090");
+
+        reqwest::blocking::post(format!("http://localhost:{port}/status").as_str())
+    }
+
+    fn wait_for_server_to_start(port: &str) {
+        loop {
+            thread::sleep(Duration::from_millis(10));
+            match reqwest::blocking::get(format!("http://localhost:{port}/status").as_str()) {
+                Ok(resp) => if let Ok(body) = resp.text() {
+                    assert!(body.contains("ok"), "server not started ok: body = {}", body);
+                    break;
+                },
+                Err(_) => continue,
+            };
+        }
     }
 }
