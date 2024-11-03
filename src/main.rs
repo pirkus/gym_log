@@ -22,7 +22,7 @@ pub mod excs_example {
     use crate::exercise;
 
     pub fn main(mongo_url: &str) {
-        env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
+        env_logger::Builder::from_env(Env::default().default_filter_or("debug")).init();
 
         let async_worker = Workers::new(1);
         let mongo_url_clj = mongo_url.to_string();
