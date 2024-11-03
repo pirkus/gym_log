@@ -59,8 +59,9 @@ mod acceptance_tests {
     #[test]
     fn can_create_and_retrieve_exercise() {
         let mongo_container = create_mongo_container();
+        let mongo_host = mongo_container.get_host().unwrap();
         let mongo_port = mongo_container.get_host_port_ipv4(ContainerPort::Tcp(27017)).unwrap();
-        let mongo_uri = format!("mongodb://root:root@localhost:{mongo_port}");
+        let mongo_uri = format!("mongodb://root:root@{mongo_host}:{mongo_port}");
 
         let _server_thread = thread::spawn(move || excs_example::main(&mongo_uri));
         let http_client = reqwest::blocking::Client::builder().build().unwrap();
