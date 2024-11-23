@@ -12,3 +12,8 @@ Cargo.lock
 
 # MSVC Windows builds of rustc generate these, which store debugging information
 *.pdb
+
+# elm-package generated files
+elm-stuff
+# elm-repl generated files
+repl-temp-*
