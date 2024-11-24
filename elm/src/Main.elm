@@ -1,35 +1,65 @@
 module Main exposing (..)
 
--- Press buttons to increment and decrement a counter.
---
--- Read how it works:
---   https://guide.elm-lang.org/architecture/buttons.html
---
-
 
 import Browser
-import Html exposing (Html, button, div, text)
-import Html.Events exposing (onClick)
+import Browser.Navigation as Nav
+import Html exposing (Html, a, code, div, h1, h3, li, text, ul)
+import Html.Attributes exposing (href)
+import Url exposing (Url)
+import Url.Parser as P exposing (Parser, (</>), (<?>), s, top)
+import Url.Parser.Query as Q
 
 
 
 -- MAIN
 
 
+main : Program () Model Msg
 main =
-  Browser.sandbox { init = init, update = update, view = view }
+    Browser.application
+        { init = init
+        , view = view
+        , update = update
+        , subscriptions = subscriptions
+        , onUrlRequest = UrlRequest
+        , onUrlChange = UrlChange
+        }
 
 
 
 -- MODEL
 
 
-type alias Model = Int
+type alias Model =
+    { history : List (Maybe Route)
+    , key : Nav.Key
+    }
 
 
-init : Model
-init =
-  0
+init : () -> Url -> Nav.Key -> ( Model, Cmd Msg )
+init _ url key =
+    ( Model [ P.parse routeParser url ] key
+    , Cmd.none
+    )
+
+
+
+-- URL PARSING
+
+
+type Route
+    = Home
+    | BlogList (Maybe String)
+    | BlogPost Int
+
+
+routeParser : Parser (Route -> a) a
+routeParser =
+    P.oneOf
+        [ P.map Home top
+        , P.map BlogList (s "blog" <?> Q.string "search")
+        , P.map BlogPost (s "blog" </> P.int)
+        ]
 
 
 
@@ -37,28 +67,66 @@ init =
 
 
 type Msg
-  = Increment
-  | Decrement
+    = UrlChange Url
+    | UrlRequest Browser.UrlRequest
 
 
-update : Msg -> Model -> Model
+update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
-  case msg of
-    Increment ->
-      model + 1
+    case msg of
+        UrlChange url ->
+            ( { model | history = P.parse routeParser url :: model.history }
+            , Cmd.none
+            )
 
-    Decrement ->
-      model - 1
+        UrlRequest request ->
+            case request of
+                Browser.Internal url ->
+                    ( model
+                    , Nav.pushUrl model.key (Url.toString url)
+                    )
+
+                Browser.External url ->
+                    ( model
+                    , Nav.load url
+                    )
+
+
+
+-- SUBSCRIPTIONS
+
+
+subscriptions : Model -> Sub Msg
+subscriptions model =
+    Sub.none
 
 
 
 -- VIEW
 
 
-view : Model -> Html Msg
+view : Model -> Browser.Document Msg
 view model =
-  div []
-    [ button [ onClick Decrement ] [ text "-" ]
-    , div [] [ text (String.fromInt model) ]
-    , button [ onClick Increment ] [ text "+" ]
-    ]
+    Browser.Document "Example Page for elm/url"
+        [ div []
+            [ h1 [] [ text "Links" ]
+            , ul [] (List.map viewLink [ "/", "/blog/", "/blog/42", "/blog/37", "/blog/?search=cats" ])
+            , h1 [] [ text "History" ]
+            , ul [] (List.map viewRoute model.history)
+            ]
+        ]
+
+
+viewLink : String -> Html Msg
+viewLink url =
+    li [] [ a [ href url ] [ text url ] ]
+
+
+viewRoute : Maybe Route -> Html msg
+viewRoute maybeRoute =
+    case maybeRoute of
+        Nothing ->
+            li [] [ code [] [ text "Uknown URL" ] ]
+
+        Just route ->
+            li [] [ code [] [ text (Debug.toString route) ] ]
